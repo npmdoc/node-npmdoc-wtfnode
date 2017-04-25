@@ -1,0 +1,238 @@
+<div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a
+
+        href="https://github.com/myndzi/wtfnode#readme"
+
+    >wtfnode (v0.5.2)</a>
+</h1>
+<h4>Utility to help find out why Node isn't exiting</h4>
+<div class="apidocSectionDiv"><a
+    href="#apidoc.tableOfContents"
+    id="apidoc.tableOfContents"
+><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.wtfnode">module wtfnode</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.wtfnode.dump">
+            function <span class="apidocSignatureSpan">wtfnode.</span>dump
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.wtfnode.init">
+            function <span class="apidocSignatureSpan">wtfnode.</span>init
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.wtfnode" id="apidoc.module.wtfnode">module wtfnode</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.wtfnode.dump" id="apidoc.element.wtfnode.dump">
+        function <span class="apidocSignatureSpan">wtfnode.</span>dump
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function dump() {
+    console.log(&#x27;[WTF Node?] open handles:&#x27;);
+
+    // sort the active handles into different types for logging
+    var sockets = [ ], fds = [ ], servers = [ ], _timers = [ ], processes = [ ], clusterWorkers = [ ], other = [ ];
+    process._getActiveHandles().forEach(function (h) {
+        if (h instanceof Socket) {
+            // stdin, stdout, etc. are now instances of socket and get listed in open handles
+            // todo: a more specific/better way to identify them than the &#x27;fd&#x27; property
+            if ((h.fd != null)) { fds.push(h); }
+            else { sockets.push(h); }
+        }
+        else if (h instanceof Server) { servers.push(h); }
+        else if (h instanceof dgramSocket) { servers.push(h); }
+        else if (h instanceof Timer) { _timers.push(h); }
+        else if (h instanceof ChildProcess) { processes.push(h); }
+        else if (h.hasOwnProperty(&#x27;__worker&#x27;)) { clusterWorkers.push(h); }
+
+        // catchall
+        else { other.push(h); }
+    });
+
+    if (fds.length) {
+        console.log(&#x27;- File descriptors: (note: stdio always exists)&#x27;);
+        fds.forEach(function (s) {
+            var str = &#x27;  - fd &#x27;+s.fd;
+            if (s.isTTY) { str += &#x27; (tty)&#x27;; }
+            if (s._isStdio) { str += &#x27; (stdio)&#x27;; }
+            if (s.destroyed) { str += &#x27; (destroyed)&#x27;; }
+            console.log(str);
+
+            // this event will source the origin of a readline instance, kind of indirectly
+            var keypressListeners = s.listeners(&#x27;keypress&#x27;);
+            if (keypressListeners &#x26;&#x26; keypressListeners.length) {
+                console.log(&#x27;    - Listeners:&#x27;);
+                keypressListeners.forEach(function (fn) {
+                    var callSite = getCallsite(fn);
+                    console.log(&#x27;      - %s: %s @ %s:%d&#x27;, &#x27;keypress&#x27;, fn.name || &#x27;(anonymous)&#x27;, callSite.file, callSite.line);
+                });
+            }
+        });
+    }
+
+    // remove cluster workers from child process list
+    clusterWorkers.forEach(function (p) {
+        if (!p.__worker || !p.__worker.process) { return; }
+        var cw = p.__worker.process,
+            idx = processes.indexOf(cw);
+
+        if (idx &#x3e; -1) { processes.splice(idx, 1); }
+    });
+
+    if (processes.length) {
+        console.log(&#x27;- Child processes&#x27;);
+        processes.forEach(function (cp) {
+            var fds = [ ];
+            console.log(&#x27;  - PID %s&#x27;, cp.pid);
+            if (!DONT_INSTRUMENT[&#x27;ChildProcess&#x27;]) {
+                var callSite = getCallsite(cp);
+                console.log(&#x27;    - Entry point: %s:%d&#x27;, callSite.file, callSite.line);
+            }
+            if (cp.stdio &#x26;&#x26; cp.stdio.length) {
+                cp.stdio.forEach(function (s) {
+                    if (s &#x26;&#x26; s._handle &#x26;&#x26; (s._handle.fd != null)) { fds.push(s._handle.fd); }
+                    var idx = sockets.indexOf(s);
+                    if (idx &#x3e; -1) {
+                        sockets.splice(idx, 1);
+                    }
+                });
+                if (fds &#x26;&#x26; fds.length) {
+                    console.log(&#x27;    - STDIO file descriptors:&#x27;, fds.join(&#x27;, &#x27;));
+                }
+            }
+        });
+    }
+
+    if (clusterWorkers.length) {
+        console.log(&#x27;- Cluster workers&#x27;);
+        clusterWorkers.forEach(function (cw) {
+            var fds = [ ], cp = cw.__worker.process;
+            console.log(&#x27;  - PID %s&#x27;, cp.pid);
+            var callSite = getCallsite(cw);
+            console.log(&#x27;    - Entry point: %s:%d&#x27;, callSite.file, callSite.line);
+        });
+    }
+
+    if (sockets.length) {
+        console.log(&#x27;- Sockets:&#x27;);
+        sockets.forEach(function (s) {
+            if (s.destroyed) {
+                console.log(&#x27;  - (?:?) -&#x3e; %s:? (destroyed)&#x27;, s._host);
+            } else if (s.localAddress) {
+                console.log(&#x27;  - %s:%s -&#x3e; %s:%s&#x27;, s.localAddress, s.localPort, s.remoteAddress, s.remotePort);
+            } else if (s._handle &#x26;&#x26; (s._handle.fd != null)) {
+                console.log(&#x27;  - fd %s&#x27;, s._handle.fd);
+            } else {
+                console.log(&#x27;  - unknown socket&#x27;);
+            }
+            var connectListeners = s.list ...</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+var wtf = require(&#x27;./index&#x27;),
+    cluster = require(&#x27;cluster&#x27;);
+
+if (cluster.isMaster) {
+    var worker = cluster.fork();
+    worker.on(&#x27;online&#x27;, function () {
+        wtf.<span class="apidocCodeKeywordSpan">dump</span>();
+        worker.kill();
+    });
+}
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.wtfnode.init" id="apidoc.element.wtfnode.init">
+        function <span class="apidocSignatureSpan">wtfnode.</span>init
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function init() {
+    process.on(&#x27;SIGINT&#x27;, function () {
+        try { dump(); }
+        catch (e) { console.error(e); }
+        process.exit();
+    });
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
